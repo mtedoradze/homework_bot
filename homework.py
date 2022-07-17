@@ -1,5 +1,6 @@
 from datetime import datetime
 from functools import wraps
+from http import HTTPStatus
 import json
 import logging
 import sys
@@ -8,7 +9,11 @@ import os
 from dotenv import load_dotenv
 import time
 from telegram import Bot
-from exceptions import NoEnvVariablesException
+from exceptions import (
+    NoEnvVariablesException,
+    NoNewStatusException,
+    NotDefinedStatusException
+)
 
 load_dotenv()
 
@@ -40,6 +45,7 @@ handler.setFormatter(formatter)
 
 
 def cache_messages(func):
+    """Кэширование отправленных ботом сообщений."""
     cache = {}
     cache[func.__name__] = {}
 
@@ -54,7 +60,7 @@ def cache_messages(func):
 
 @cache_messages
 def send_message(bot, message):
-    """Отправляет сообщение в Telegram чат"""
+    """Отправляет сообщение в Telegram чат, если оно новое."""
     success = bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
     if success:
         logger.info(f'Бот отправил сообщение: "{message}"')
@@ -62,60 +68,61 @@ def send_message(bot, message):
 
 def get_api_answer(current_timestamp) -> dict:
     """Делает запрос, возвращает ответ API."""
-    try:
-        timestamp: datetime = current_timestamp or int(time.time())
-        params: dict = {'from_date': timestamp}
-        homework_statuses: json = requests.get(
-            url=ENDPOINT,
-            headers=HEADERS,
-            params=params
-        )
-    except Exception:
-        logging.error(f'Недоступность эндпоинта {ENDPOINT}')
-
+    timestamp: datetime = current_timestamp or int(time.time())
+    params: dict = {'from_date': timestamp}
+    homework_statuses: json = requests.get(
+        url=ENDPOINT,
+        headers=HEADERS,
+        params=params
+    )
+    if homework_statuses.status_code != HTTPStatus.OK:
+        raise ConnectionError
     return homework_statuses.json()
 
 
 def check_response(response) -> list:
     """Проверяет ответ API на корректность,
     возвращает список домашних работ."""
-    homework = response['homeworks']
+    homeworks = response['homeworks']
+    if type(homeworks) != list:
+        raise NotDefinedStatusException
+    if len(homeworks) == 0:
+        raise NoNewStatusException
     logger.debug('Извлечен список работ')
-    return homework
+    return homeworks
 
 
 def parse_status(homework) -> str:
     """Извлекает из информации о конкретной домашней работе
     статус этой работы, возвращает подготовленную для отправки
     в Telegram строку."""
-    try:
-        if len(homework) == 0:
-            message = 'Отсутствие в ответе новых статусов'
-            logger.debug(message)
-            return message
-        if homework[0]['status'] not in HOMEWORK_STATUSES:
-            message = 'Недокументированный статус домашней работы'
-            logger.error(message)
-            return message
-        homework_name = homework[0]['homework_name']
-        for homework_status in HOMEWORK_STATUSES:
-            homework_status = homework[0]['status']
-            verdict = HOMEWORK_STATUSES[homework_status]
-        message = (
-            f'Изменился статус проверки работы "{homework_name}". {verdict}'
-        )
-    except KeyError:
-        message = 'Отсутствуют ожидаемые ключи в ответе API'
-        logger.error(message)
-    return message
+    if 'status' not in homework or 'homework_name' not in homework:
+        raise KeyError
+    homework_status = homework['status']
+
+    if homework_status not in HOMEWORK_STATUSES.keys():
+        raise NotDefinedStatusException
+    verdict = HOMEWORK_STATUSES[homework_status]
+    homework_name = homework['homework_name']
+
+    return (f'Изменился статус проверки работы "{homework_name}". {verdict}')
 
 
-def check_tokens(value) -> bool:
+def check_tokens() -> bool:
     """Проверяет доступность переменных окружения,
     которые необходимы для работы программы."""
-    if value == '':
-        return False
-    return True
+    env_variables = (
+        ('practicum_token', PRACTICUM_TOKEN),
+        ('telegram_token', TELEGRAM_TOKEN),
+        ('telegram_chat_id', TELEGRAM_CHAT_ID)
+    )
+    for key, value in env_variables:
+        if value == '':
+            logger.critical('Отсутствует обязательная переменная окружения: '
+                            f'{key}. '
+                            'Программа принудительно остановлена.')
+            raise NoEnvVariablesException
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def main():
@@ -124,39 +131,45 @@ def main():
     получение списка работ из ответа API,
     получение информации о статусе последней работы,
     отправка сообщения в телеграм"""
-    env_variables = (
-        ('practicum_token', PRACTICUM_TOKEN),
-        ('telegram_token', TELEGRAM_TOKEN),
-        ('telegram_chat_id', TELEGRAM_CHAT_ID)
-    )
-    for key, value in env_variables:
-        token = check_tokens(value)
-        if not token:
-            logger.critical('Отсутствует обязательная переменная окружения: '
-                            f'{key}. '
-                            'Программа принудительно остановлена.')
-            raise NoEnvVariablesException
-
+    check_tokens()
     bot = Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time()) - TIME_DIFF
+    current_timestamp = int(time.time())
 
     while True:
         try:
             response = get_api_answer(current_timestamp)
             logger.debug('Получен ответ API в формате json')
-            homework = check_response(response)
+            homeworks = check_response(response)
+            homework = homeworks[0]
             message = parse_status(homework)
             current_timestamp = response['current_date']
+        except NoEnvVariablesException:
+            pass
+        except NoNewStatusException:
+            message = 'Отсутствие в ответе новых статусов'
+            logger.debug(message)
+            return message
+        except KeyError:
+            message = 'Отсутствие ожидаемых ключей в ответе API'
+            logger.error(message)
+            return message
+        except NotDefinedStatusException:
+            message = 'Недокументированный статус домашней работы'
+            logger.error(message)
+            return message
+        except ConnectionError:
+            message = f'Недоступность эндпоинта {ENDPOINT}'
+            logger.error(message)
+            return message
+        except Exception as error:
+            message = f'Сбой в работе программы: {error}'
+            logger.error(message)
+            time.sleep(RETRY_TIME)
+        finally:
             try:
                 send_message(bot, message)
             except Exception:
                 logger.error('Бот не смог отправить сообщение')
-
-            time.sleep(RETRY_TIME)
-
-        except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            logger.error(message)
             time.sleep(RETRY_TIME)
 
 
