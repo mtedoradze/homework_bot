@@ -81,8 +81,9 @@ def get_api_answer(current_timestamp) -> dict:
 
 
 def check_response(response) -> list:
-    """Проверяет ответ API на корректность,
-    возвращает список домашних работ."""
+    """Проверяет ответ API на корректность.
+    Возвращает список домашних работ.
+    """
     homeworks = response['homeworks']
     if type(homeworks) != list:
         raise NotDefinedStatusException
@@ -93,9 +94,9 @@ def check_response(response) -> list:
 
 
 def parse_status(homework) -> str:
-    """Извлекает из информации о конкретной домашней работе
-    статус этой работы, возвращает подготовленную для отправки
-    в Telegram строку."""
+    """Извлекает из информации о конкретной домашней работе ее статус.
+    Возвращает подготовленную для отправки в Telegram строку.
+    """
     if 'status' not in homework or 'homework_name' not in homework:
         raise KeyError
     homework_status = homework['status']
@@ -109,8 +110,7 @@ def parse_status(homework) -> str:
 
 
 def check_tokens() -> bool:
-    """Проверяет доступность переменных окружения,
-    которые необходимы для работы программы."""
+    """Проверяет доступность необходимых переменных окружения."""
     env_variables = (
         ('practicum_token', PRACTICUM_TOKEN),
         ('telegram_token', TELEGRAM_TOKEN),
@@ -126,11 +126,13 @@ def check_tokens() -> bool:
 
 
 def main():
-    """Основная логика работы бота. Вызывает поочередно функции:
+    """Основная логика работы бота.
+    Вызывает поочередно функции:
     Проверка наличия токенов, запрос к API,
     получение списка работ из ответа API,
     получение информации о статусе последней работы,
-    отправка сообщения в телеграм"""
+    отправка сообщения в телеграм.
+    """
     check_tokens()
     bot = Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
