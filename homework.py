@@ -73,10 +73,8 @@ def get_api_answer(current_timestamp) -> dict:
         headers=HEADERS,
         params=params
     )
-    if not homework_statuses:
+    if not homework_statuses or homework_statuses.status_code != HTTPStatus.OK:
         raise URLError(f'Недоступность эндпоинта {ENDPOINT}')
-    if homework_statuses.status_code != HTTPStatus.OK:
-        raise ConnectionError(f'Недоступность эндпоинта {ENDPOINT}')
     try:
         response = homework_statuses.json()
     except ValueError:
@@ -160,10 +158,6 @@ def main(current_timestamp):
             message = parse_status(homework)
             current_timestamp = response['current_date']
         except URLError as error:
-            logger.error(f'URLERROR:{error}')
-            message = str(error)
-            return message
-        except ConnectionError as error:
             logger.error(f'URLERROR:{error}')
             message = str(error)
             return message
