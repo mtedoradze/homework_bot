@@ -94,7 +94,7 @@ def check_response(response) -> list:
     Возвращает список домашних работ.
     """
     try:
-        homeworks = response['homewor']
+        homeworks = response['homeworks']
         if not type(homeworks) is list:
             raise exceptions.NotDefinedStatusException(
                 'Недокументированный статус домашней работы'
