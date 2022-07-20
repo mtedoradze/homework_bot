@@ -22,7 +22,7 @@ PRACTICUM_TOKEN: str = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN: str = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID: int = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME: int = 600
+RETRY_TIME: int = 6
 
 ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
@@ -77,14 +77,16 @@ def get_api_answer(current_timestamp) -> dict:
             headers=HEADERS,
             params=params
         )
-    except ConnectionError:
-        raise ConnectionError('Недоступность эндпоинта')
-    if homework_statuses.status_code != HTTPStatus.OK:
-        raise URLError(f'Недоступность эндпоинта {ENDPOINT}')
+        if homework_statuses.status_code != HTTPStatus.OK:
+            raise URLError(f'Недоступность эндпоинта {ENDPOINT}')
+    except requests.RequestException:
+        raise requests.RequestException('Недоступность эндпоинта')
+
     try:
         response = homework_statuses.json()
     except ValueError:
         raise ValueError('Ответ API не в формате json')
+
     return response
 
 
