@@ -22,7 +22,7 @@ PRACTICUM_TOKEN: str = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN: str = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID: int = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME: int = 6
+RETRY_TIME: int = 600
 
 ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
